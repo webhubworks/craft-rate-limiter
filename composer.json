@@ -1,0 +1,47 @@
+{
+    "name": "webhubworks/craft-rate-limiter",
+    "description": "Rate Limiter for Controller Actions",
+    "type": "craft-plugin",
+    "license": "mit",
+    "support": {
+        "email": "support@webhub.de",
+        "issues": "https://github.com/webhubworks/craft-rate-limiter/issues?state=open",
+        "source": "https://github.com/webhubworks/craft-rate-limiter",
+        "docs": "https://github.com/webhubworks/craft-rate-limiter",
+        "rss": "https://github.com/webhubworks/craft-rate-limiter/releases.atom"
+    },
+    "require": {
+        "php": ">=8.0.0",
+        "craftcms/cms": "^4.3.5"
+    },
+    "require-dev": {
+    },
+    "autoload": {
+        "psr-4": {
+            "webhubworks\\craftratelimiter\\": "src/"
+        }
+    },
+    "extra": {
+        "handle": "craft-rate-limiter",
+        "name": "CraftRateLimiter",
+        "developer": "Webhubworks",
+        "documentationUrl": "https://github.com/webhubworks/craft-rate-limiter",
+        "class": "webhubworks\\craftratelimiter\\CraftRateLimiter"
+    },
+    "scripts": {
+        "check-cs": "ecs check --ansi",
+        "fix-cs": "ecs check --ansi --fix",
+        "phpstan": "phpstan --memory-limit=1G"
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.0.2"
+        },
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true,
+            "craftcms/plugin-installer": true
+        }
+    }
+}
+

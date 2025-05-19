@@ -73,11 +73,19 @@ class CraftRateLimiter extends Plugin
                 $controllerClass = get_class($event->action->controller); // e.g. 'craft\controllers\UsersController'
                 $actionId = $event->action->id; // e.g. 'login'
 
-                if (!in_array($request->getMethod(), $this->config['methods'])) {
+                if (! in_array($request->getMethod(), $this->config['methods'])) {
                     return;
                 }
 
-                if (!in_array($controllerClass, array_keys($this->config['actions']))) {
+                if (! in_array($controllerClass, array_keys($this->config['actions']))) {
+                    return;
+                }
+
+                $controllerActions = $this->config['actions'][$controllerClass];
+                if (
+                    $controllerActions !== '*'
+                    && (! is_array($controllerActions) || ! in_array($actionId, $controllerActions))
+                ){
                     return;
                 }
 
@@ -86,12 +94,6 @@ class CraftRateLimiter extends Plugin
                     controller: $controllerClass,
                     action: $actionId
                 );
-
-                // attach rate limit filter to controller that:
-                // calcs allowance
-                // blocks request
-                // Make sure IP is not IP from eg load balancer
-                // ...
             }
         );
     }
@@ -116,7 +118,8 @@ class CraftRateLimiter extends Plugin
                 'level' => LogLevel::INFO,
                 'allowLineBreaks' => true,
                 'maxFiles' => 10,
-                'logVars' => ['_GET', '_POST'],
+                'logContext' => false,
+                'logVars' => [],
                 'formatter' => new LineFormatter(
                     format: "%datetime% [%level_name%] %message%\n",
                     dateFormat: 'Y-m-d H:i:s',

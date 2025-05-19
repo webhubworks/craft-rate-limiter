@@ -11,8 +11,8 @@
         "rss": "https://github.com/webhubworks/craft-rate-limiter/releases.atom"
     },
     "require": {
-        "php": ">=8.0.0",
-        "craftcms/cms": "^4.3.5"
+        "php": ">=8.0.2",
+        "craftcms/cms": "^4.3.5|5.0.0"
     },
     "require-dev": {
     },
@@ -23,8 +23,8 @@
     },
     "extra": {
         "handle": "craft-rate-limiter",
-        "name": "CraftRateLimiter",
-        "developer": "Webhubworks",
+        "name": "Craft Rate Limiter",
+        "developer": "webhub GmbH",
         "documentationUrl": "https://github.com/webhubworks/craft-rate-limiter",
         "class": "webhubworks\\craftratelimiter\\CraftRateLimiter"
     },

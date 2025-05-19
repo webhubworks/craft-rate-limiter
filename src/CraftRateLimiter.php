@@ -70,6 +70,10 @@ class CraftRateLimiter extends Plugin
             function (ActionEvent $event) {
 
                 $request = Craft::$app->getRequest();
+                if($request->isConsoleRequest()){
+                    return;
+                }
+
                 $controllerClass = get_class($event->action->controller); // e.g. 'craft\controllers\UsersController'
                 $actionId = $event->action->id; // e.g. 'login'
 

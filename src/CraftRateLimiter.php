@@ -13,6 +13,7 @@ use yii\base\ActionEvent;
 use yii\base\Application;
 use yii\base\Event;
 use yii\base\Module;
+use yii\web\Response;
 
 /**
  * CraftRateLimiter plugin
@@ -101,6 +102,8 @@ class CraftRateLimiter extends Plugin
 
                 if($isRateLimited){
                     $event->isValid = false;
+
+                    $this->handleRateLimitResponse();
                 }
             }
         );
@@ -174,9 +177,6 @@ class CraftRateLimiter extends Plugin
                  */
                 Craft::error("Rate limit of $this->numberOfRequestsPerMinute/min exceeded for IP: $ip, controller: $controller, action: $action, method: $method", 'craft-rate-limiter');
 
-                Craft::$app->getResponse()->setStatusCode(429);
-                Craft::$app->getResponse()->data = 'Rate limit exceeded. Try again later.';
-                // Craft::$app->end();
                 return true;
             } else {
                 $data = ['count' => 1, 'start' => time()];
@@ -185,5 +185,32 @@ class CraftRateLimiter extends Plugin
 
         $cache->set($key, $data, 60);
         return false;
+    }
+
+    private function handleRateLimitResponse(): void
+    {
+        $response = Craft::$app->getResponse();
+        $request = Craft::$app->getRequest();
+
+        $message = Craft::t('craft-rate-limiter', 'Rate limit exceeded. Try again later.');
+
+        if ($request->getIsAjax() || $request->getAcceptsJson()) {
+            // JSON response for AJAX or API clients
+            $response->format = Response::FORMAT_JSON;
+            $response->statusCode = 429; // Too Many Requests
+            $response->data = [
+                'error' => $message,
+            ];
+        } else {
+            // Standard HTTP response for browser requests
+            $response->statusCode = 429; // Too Many Requests
+            Craft::$app->getSession()->setFlash('error', $message);
+
+            // Redirect back or to a specific page (e.g., login form)
+            $response->redirect(Craft::$app->getRequest()->referrer ?: '/');
+        }
+
+        $response->send();
+        Craft::$app->end();
     }
 }

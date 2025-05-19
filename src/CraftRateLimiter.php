@@ -93,11 +93,15 @@ class CraftRateLimiter extends Plugin
                     return;
                 }
 
-                $this->checkRateLimit(
+                $isRateLimited = $this->checkRateLimit(
                     method: $request->getMethod(),
                     controller: $controllerClass,
                     action: $actionId
                 );
+
+                if($isRateLimited){
+                    $event->isValid = false;
+                }
             }
         );
     }
@@ -140,7 +144,7 @@ class CraftRateLimiter extends Plugin
         string $method,
         string $controller,
         string $action
-    ): void
+    ): bool
     {
         /**
          * `Craft::$app->getRequest()->getUserIP()` should return the real IP address of the user
@@ -150,7 +154,7 @@ class CraftRateLimiter extends Plugin
         $cache = Craft::$app->getCache();
 
         if (!$ip) {
-            return;
+            return false;
         }
 
         $key = strtolower($method.'_'.$controller.'_'.$action.'_'.$ip);
@@ -172,12 +176,14 @@ class CraftRateLimiter extends Plugin
 
                 Craft::$app->getResponse()->setStatusCode(429);
                 Craft::$app->getResponse()->data = 'Rate limit exceeded. Try again later.';
-                Craft::$app->end();
+                // Craft::$app->end();
+                return true;
             } else {
                 $data = ['count' => 1, 'start' => time()];
             }
         }
 
         $cache->set($key, $data, 60);
+        return false;
     }
 }

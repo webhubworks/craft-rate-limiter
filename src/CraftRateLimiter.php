@@ -8,6 +8,7 @@ use craft\base\Plugin;
 use craft\log\MonologTarget;
 use Monolog\Formatter\LineFormatter;
 use Psr\Log\LogLevel;
+use webhubworks\craftratelimiter\models\RateLimiterConfig;
 use webhubworks\craftratelimiter\models\Settings;
 use yii\base\ActionEvent;
 use yii\base\Application;
@@ -69,6 +70,10 @@ class CraftRateLimiter extends Plugin
             Application::class,
             Module::EVENT_BEFORE_ACTION,
             function (ActionEvent $event) {
+
+                if(empty($this->config)){
+                    return;
+                }
 
                 $request = Craft::$app->getRequest();
                 if($request->isConsoleRequest){

@@ -163,12 +163,28 @@ class CraftRateLimiter extends Plugin
         ?int $numberOfRequestsPerHour = null,
     ): bool
     {
-        return match(true){
-            $numberOfRequestsPerSecond !== null => $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerSecond, 'second'),
-            $numberOfRequestsPerMinute !== null => $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerMinute, 'minute'),
-            $numberOfRequestsPerHour !== null => $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerHour, 'hour'),
-            default => false,
-        };
+        if($numberOfRequestsPerSecond !== null){
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerSecond, 'second');
+            if($isRateLimited){
+                return true;
+            }
+        }
+
+        if($numberOfRequestsPerMinute !== null){
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerMinute, 'minute');
+            if($isRateLimited){
+                return true;
+            }
+        }
+
+        if($numberOfRequestsPerHour !== null){
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerHour, 'hour');
+            if($isRateLimited){
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function handleRateLimitResponse(): void
@@ -191,7 +207,7 @@ class CraftRateLimiter extends Plugin
             Craft::$app->getSession()->setFlash('error', $message);
 
             // Redirect back or to a specific page (e.g., login form)
-            $response->redirect(Craft::$app->getRequest()->referrer ?: '/');
+            $response->redirect(Craft::$app->getRequest()->referrer ?: '/', 429);
         }
 
         $response->send();

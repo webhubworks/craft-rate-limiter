@@ -92,6 +92,11 @@ class CraftRateLimiter extends Plugin
                  * If so, we check if the rate limit for this request method and controller action is exceeded.
                  */
                 foreach ($this->configs as $config) {
+
+                    if($config instanceof RateLimiterConfig){
+                        $config = $config->build();
+                    }
+
                     if (
                         ! isset($config['requestMethods'], $config['controllerActions']) ||
                         ! in_array($requestMethod, $config['requestMethods']) ||

@@ -22,14 +22,12 @@ return [
             ->addControllerAction(
                 controllerClass: \craft\controllers\UsersController::class,
                 controllerActions: ['login']
-            )
-            ->build(),
+            ),
             
         RateLimiterConfig::make()
             ->requestsPerMinute(2)
             ->requestMethods(['POST', 'PUT', 'PATCH', 'DELETE'])
-            ->anyActionOfController(\craft\controllers\SomeOtherController::class)
-            ->build(),
+            ->anyActionOfController(\craft\controllers\SomeOtherController::class),
     ],
 ];
 ```

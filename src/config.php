@@ -22,17 +22,17 @@
  * you do for 'general.php'
  */
 
+//use webhubworks\craftratelimiter\models\RateLimiterConfig;
+
 return [
     '*' => [
-        //'perMinute' => 2,
-        //'perHour' => 100,
-        //'methods' => ['POST', 'PUT', 'PATCH', 'DELETE'],
-        //'actions' => [
-            //SomeController::class => [
-                //'someAction',
-                //'anotherAction',
-            //],
-            //AnotherController::class => '*',
-        //]
+        //RateLimiterConfig::make()
+            //->requestsPerMinute(2)
+            //->requestMethods(['POST', 'PUT', 'PATCH', 'DELETE'])
+            //->addControllerAction(
+                //controllerClass: \craft\controllers\UsersController::class,
+                //controllerActions: ['login']
+            //)
+            //->build(),
     ],
 ];

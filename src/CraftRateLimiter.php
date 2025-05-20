@@ -29,8 +29,7 @@ class CraftRateLimiter extends Plugin
 {
     public string $schemaVersion = '1.0.0';
     public bool $hasCpSettings = true;
-    public array $config = [];
-    public int $numberOfRequestsPerMinute = 0;
+    public array $configs = [];
 
     public static function config(): array
     {
@@ -71,7 +70,7 @@ class CraftRateLimiter extends Plugin
             Module::EVENT_BEFORE_ACTION,
             function (ActionEvent $event) {
 
-                if(empty($this->config)){
+                if(empty($this->configs)){
                     return;
                 }
 
@@ -82,33 +81,47 @@ class CraftRateLimiter extends Plugin
 
                 $controllerClass = get_class($event->action->controller); // e.g. 'craft\controllers\UsersController'
                 $actionId = $event->action->id; // e.g. 'login'
+                $requestMethod = $request->getMethod(); // e.g. 'POST'
 
-                if (! in_array($request->getMethod(), $this->config['methods'])) {
-                    return;
-                }
+                /**
+                 * We iterate over every config entry checking:
+                 * - Does the request method match?
+                 * - Does the controller match?
+                 * - Does the controller action match?
+                 *
+                 * If so, we check if the rate limit for this request method and controller action is exceeded.
+                 */
+                foreach ($this->configs as $config) {
+                    if (
+                        ! isset($config['requestMethods'], $config['controllerActions']) ||
+                        ! in_array($requestMethod, $config['requestMethods']) ||
+                        ! in_array($controllerClass, array_keys($config['controllerActions']))
+                    ) {
+                        continue;
+                    }
 
-                if (! in_array($controllerClass, array_keys($this->config['actions']))) {
-                    return;
-                }
+                    $controllerActions = $config['controllerActions'][$controllerClass];
+                    if (
+                        $controllerActions !== '*'
+                        && (! is_array($controllerActions) || ! in_array($actionId, $controllerActions))
+                    ){
+                        continue;
+                    }
 
-                $controllerActions = $this->config['actions'][$controllerClass];
-                if (
-                    $controllerActions !== '*'
-                    && (! is_array($controllerActions) || ! in_array($actionId, $controllerActions))
-                ){
-                    return;
-                }
+                    $isRateLimited = $this->checkRateLimit(
+                        method: $requestMethod,
+                        controller: $controllerClass,
+                        action: $actionId,
+                        numberOfRequestsPerSecond: $config['numberOfRequestsPerSecond'],
+                        numberOfRequestsPerMinute: $config['numberOfRequestsPerMinute'],
+                        numberOfRequestsPerHour: $config['numberOfRequestsPerHour'],
+                    );
 
-                $isRateLimited = $this->checkRateLimit(
-                    method: $request->getMethod(),
-                    controller: $controllerClass,
-                    action: $actionId
-                );
+                    if($isRateLimited){
+                        $event->isValid = false;
 
-                if($isRateLimited){
-                    $event->isValid = false;
-
-                    $this->handleRateLimitResponse();
+                        $this->handleRateLimitResponse();
+                    }
                 }
             }
         );
@@ -116,11 +129,7 @@ class CraftRateLimiter extends Plugin
 
     private function getConfig(): void
     {
-        $this->config = Craft::$app->getConfig()->getConfigFromFile('craft-rate-limiter');
-
-        if(isset($this->config['perMinute']) && $this->config['perMinute'] > 0) {
-            $this->numberOfRequestsPerMinute = $this->config['perMinute'];
-        }
+        $this->configs = Craft::$app->getConfig()->getConfigFromFile('craft-rate-limiter');
     }
 
     private function registerLogTarget(): void
@@ -145,51 +154,21 @@ class CraftRateLimiter extends Plugin
         }
     }
 
-    /**
-     * TODO: Implement perSecond, perHour, etc.
-     */
     private function checkRateLimit(
         string $method,
         string $controller,
-        string $action
+        string $action,
+        ?int $numberOfRequestsPerSecond = null,
+        ?int $numberOfRequestsPerMinute = null,
+        ?int $numberOfRequestsPerHour = null,
     ): bool
     {
-        /**
-         * `Craft::$app->getRequest()->getUserIP()` should return the real IP address of the user
-         * and not e.g. the IP of a load balancer or reverse proxy.
-         */
-        $ip = Craft::$app->getRequest()->getUserIP();
-        $cache = Craft::$app->getCache();
-
-        if (!$ip) {
-            return false;
-        }
-
-        $key = strtolower($method.'_'.$controller.'_'.$action.'_'.$ip);
-
-        $data = $cache->get($key);
-
-        if ($data) {
-            $data['count']++;
-        } else {
-            $data = ['count' => 1, 'start' => time()];
-        }
-
-        if ($data['count'] > $this->numberOfRequestsPerMinute) {
-            if ((time() - $data['start']) <= 60) {
-                /**
-                 * Block the request
-                 */
-                Craft::error("Rate limit of $this->numberOfRequestsPerMinute/min exceeded for IP: $ip, controller: $controller, action: $action, method: $method", 'craft-rate-limiter');
-
-                return true;
-            } else {
-                $data = ['count' => 1, 'start' => time()];
-            }
-        }
-
-        $cache->set($key, $data, 60);
-        return false;
+        return match(true){
+            $numberOfRequestsPerSecond !== null => $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerSecond, 'second'),
+            $numberOfRequestsPerMinute !== null => $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerMinute, 'minute'),
+            $numberOfRequestsPerHour !== null => $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerHour, 'hour'),
+            default => false,
+        };
     }
 
     private function handleRateLimitResponse(): void
@@ -217,5 +196,54 @@ class CraftRateLimiter extends Plugin
 
         $response->send();
         Craft::$app->end();
+    }
+
+    private function checkRateLimitPerInterval(string $method, string $controller, string $action, int $numberOfRequests, string $interval): bool
+    {
+        /**
+         * `Craft::$app->getRequest()->getUserIP()` should return the real IP address of the user
+         * and not e.g. the IP of a load balancer or reverse proxy.
+         */
+        $ip = Craft::$app->getRequest()->getUserIP();
+        $cache = Craft::$app->getCache();
+
+        if (!$ip) {
+            return false;
+        }
+
+        $key = strtolower($method . '_' . $controller . '_' . $action . '_' . $ip . '_' . $interval);
+
+        $data = $cache->get($key);
+
+        if ($data) {
+            $data['count']++;
+        } else {
+            $data = ['count' => 1, 'start' => time()];
+        }
+
+        if ($data['count'] > $numberOfRequests) {
+            if ((time() - $data['start']) <= $this->getSecondsForInterval($interval)) {
+                /**
+                 * Block the request
+                 */
+                Craft::error("Rate limit of $numberOfRequests/$interval exceeded for IP: $ip, controller: $controller, action: $action, method: $method", 'craft-rate-limiter');
+
+                return true;
+            } else {
+                $data = ['count' => 1, 'start' => time()];
+            }
+        }
+
+        $cache->set($key, $data, $this->getSecondsForInterval($interval));
+        return false;
+    }
+
+    private function getSecondsForInterval(string $interval = 'minute'): int
+    {
+        return match($interval){
+            'second' => 1,
+            'hour' => 3600,
+            default => 60,
+        };
     }
 }

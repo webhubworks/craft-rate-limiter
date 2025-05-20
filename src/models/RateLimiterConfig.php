@@ -5,9 +5,11 @@ namespace webhubworks\craftratelimiter\models;
 class RateLimiterConfig
 {
     private array $config = [
-        'perMinute' => 10,
-        'methods' => ['POST', 'PUT', 'PATCH', 'DELETE'],
-        'actions' => [],
+        'numberOfRequestsPerSecond' => null,
+        'numberOfRequestsPerMinute' => null,
+        'numberOfRequestsPerHour' => null,
+        'requestMethods' => ['POST', 'PUT', 'PATCH', 'DELETE'],
+        'controllerActions' => null,
     ];
 
     public static function make(): self
@@ -15,21 +17,39 @@ class RateLimiterConfig
         return new self();
     }
 
-    public function requestsPerMinute(int $requests): self
+    public function requestsPerSecond(int $numberOfRequestsPerSecond): self
     {
-        $this->config['perMinute'] = $requests;
+        $this->config['numberOfRequestsPerSecond'] = $numberOfRequestsPerSecond;
         return $this;
     }
 
-    public function requestMethods(array $methods): self
+    public function requestsPerMinute(int $numberOfRequestsPerMinute): self
     {
-        $this->config['methods'] = $methods;
+        $this->config['numberOfRequestsPerMinute'] = $numberOfRequestsPerMinute;
         return $this;
     }
 
-    public function addControllerAction(string $controllerClass, array $actions): self
+    public function requestsPerHour(int $numberOfRequestsPerHour): self
     {
-        $this->config['actions'][$controllerClass] = $actions;
+        $this->config['numberOfRequestsPerHour'] = $numberOfRequestsPerHour;
+        return $this;
+    }
+
+    public function requestMethods(array $requestMethods): self
+    {
+        $this->config['requestMethods'] = $requestMethods;
+        return $this;
+    }
+
+    public function addControllerAction(string $controllerClass, array $controllerActions): self
+    {
+        $this->config['controllerActions'][$controllerClass] = $controllerActions;
+        return $this;
+    }
+
+    public function anyActionOfController(string $controllerClass): self
+    {
+        $this->config['controllerActions'][$controllerClass] = '*';
         return $this;
     }
 

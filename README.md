@@ -2,29 +2,34 @@
 
 Rate Limiter for Controller Actions
 
-## Requirements
+## Config
+Copy the `config.php` file to your config directory as `craft-rate-limiter.php` and set the rate limit values. \
+These are two example configs:
 
-This plugin requires Craft CMS 4.3.5 or later, and PHP 8.0.0 or later.
+```php
+<?php
 
-## Installation
+use webhubworks\craftratelimiter\models\RateLimiterConfig;
 
-You can install this plugin from the Plugin Store or with Composer.
-
-#### From the Plugin Store
-
-Go to the Plugin Store in your project’s Control Panel and search for “CraftRateLimiter”. Then press “Install”.
-
-#### With Composer
-
-Open your terminal and run the following commands:
-
-```bash
-# go to the project directory
-cd /path/to/my-project.test
-
-# tell Composer to load the plugin
-composer require webhubworks/craft-rate-limiter
-
-# tell Craft to install the plugin
-./craft plugin/install craft-rate-limiter
+return [
+    '*' => [
+    
+        RateLimiterConfig::make()
+            ->requestsPerSecond(1)
+            ->requestsPerMinute(2)
+            ->requestsPerHour(20)
+            ->requestMethods(['POST', 'PUT', 'PATCH', 'DELETE'])
+            ->addControllerAction(
+                controllerClass: \craft\controllers\UsersController::class,
+                controllerActions: ['login']
+            )
+            ->build(),
+            
+        RateLimiterConfig::make()
+            ->requestsPerMinute(2)
+            ->requestMethods(['POST', 'PUT', 'PATCH', 'DELETE'])
+            ->anyActionOfController(\craft\controllers\SomeOtherController::class)
+            ->build(),
+    ],
+];
 ```

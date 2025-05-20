@@ -212,7 +212,7 @@ class CraftRateLimiter extends Plugin
             Craft::$app->getSession()->setFlash('error', $message);
 
             // Redirect back or to a specific page (e.g., login form)
-            $response->redirect(Craft::$app->getRequest()->referrer ?: '/', 429);
+            $response->redirect(Craft::$app->getRequest()->referrer ?: '/');
         }
 
         $response->send();

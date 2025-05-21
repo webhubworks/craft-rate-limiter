@@ -8,6 +8,7 @@ use craft\base\Plugin;
 use craft\log\MonologTarget;
 use Monolog\Formatter\LineFormatter;
 use Psr\Log\LogLevel;
+use webhubworks\craftratelimiter\events\RateLimitExceededEvent;
 use webhubworks\craftratelimiter\models\RateLimiterConfig;
 use webhubworks\craftratelimiter\models\Settings;
 use yii\base\ActionEvent;
@@ -27,6 +28,8 @@ use yii\web\Response;
  */
 class CraftRateLimiter extends Plugin
 {
+    const RATE_LIMIT_EXCEEDED = 'rateLimitExceeded';
+
     public string $schemaVersion = '1.0.0';
     public bool $hasCpSettings = true;
     public array $configs = [];
@@ -125,6 +128,15 @@ class CraftRateLimiter extends Plugin
                     if($isRateLimited){
                         $event->isValid = false;
 
+                        $this->trigger(self::RATE_LIMIT_EXCEEDED, new RateLimitExceededEvent([
+                            'requestMethod' => $requestMethod,
+                            'controllerClass' => $controllerClass,
+                            'actionId' => $actionId,
+                            'numberOfRequestsPerSecond' => $config['numberOfRequestsPerSecond'],
+                            'numberOfRequestsPerMinute' => $config['numberOfRequestsPerMinute'],
+                            'numberOfRequestsPerHour' => $config['numberOfRequestsPerHour'],
+                        ]));
+
                         $this->handleRateLimitResponse();
                     }
                 }
@@ -192,33 +204,6 @@ class CraftRateLimiter extends Plugin
         return false;
     }
 
-    private function handleRateLimitResponse(): void
-    {
-        $response = Craft::$app->getResponse();
-        $request = Craft::$app->getRequest();
-
-        $message = Craft::t('craft-rate-limiter', 'Rate limit exceeded. Try again later.');
-
-        if ($request->getIsAjax() || $request->getAcceptsJson()) {
-            // JSON response for AJAX or API clients
-            $response->format = Response::FORMAT_JSON;
-            $response->statusCode = 429; // Too Many Requests
-            $response->data = [
-                'error' => $message,
-            ];
-        } else {
-            // Standard HTTP response for browser requests
-            $response->statusCode = 429; // Too Many Requests
-            Craft::$app->getSession()->setFlash('error', $message);
-
-            // Redirect back or to a specific page (e.g., login form)
-            $response->redirect(Craft::$app->getRequest()->referrer ?: '/');
-        }
-
-        $response->send();
-        Craft::$app->end();
-    }
-
     private function checkRateLimitPerInterval(string $method, string $controller, string $action, int $numberOfRequests, string $interval): bool
     {
         /**
@@ -266,5 +251,32 @@ class CraftRateLimiter extends Plugin
             'hour' => 3600,
             default => 60,
         };
+    }
+
+    private function handleRateLimitResponse(): void
+    {
+        $response = Craft::$app->getResponse();
+        $request = Craft::$app->getRequest();
+
+        $message = Craft::t('craft-rate-limiter', 'Rate limit exceeded. Try again later.');
+
+        if ($request->getIsAjax() || $request->getAcceptsJson()) {
+            // JSON response for AJAX or API clients
+            $response->format = Response::FORMAT_JSON;
+            $response->statusCode = 429; // Too Many Requests
+            $response->data = [
+                'error' => $message,
+            ];
+        } else {
+            // Standard HTTP response for browser requests
+            $response->statusCode = 429; // Too Many Requests
+            Craft::$app->getSession()->setFlash('error', $message);
+
+            // Redirect back or to a specific page (e.g., login form)
+            $response->redirect(Craft::$app->getRequest()->referrer ?: '/');
+        }
+
+        $response->send();
+        Craft::$app->end();
     }
 }

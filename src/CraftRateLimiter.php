@@ -120,22 +120,11 @@ class CraftRateLimiter extends Plugin
                         method: $requestMethod,
                         controller: $controllerClass,
                         action: $actionId,
-                        numberOfRequestsPerSecond: $config['numberOfRequestsPerSecond'],
-                        numberOfRequestsPerMinute: $config['numberOfRequestsPerMinute'],
-                        numberOfRequestsPerHour: $config['numberOfRequestsPerHour'],
+                        config: $config
                     );
 
                     if($isRateLimited){
                         $event->isValid = false;
-
-                        $this->trigger(self::RATE_LIMIT_EXCEEDED, new RateLimitExceededEvent([
-                            'requestMethod' => $requestMethod,
-                            'controllerClass' => $controllerClass,
-                            'actionId' => $actionId,
-                            'numberOfRequestsPerSecond' => $config['numberOfRequestsPerSecond'],
-                            'numberOfRequestsPerMinute' => $config['numberOfRequestsPerMinute'],
-                            'numberOfRequestsPerHour' => $config['numberOfRequestsPerHour'],
-                        ]));
 
                         $this->handleRateLimitResponse();
                     }
@@ -175,28 +164,30 @@ class CraftRateLimiter extends Plugin
         string $method,
         string $controller,
         string $action,
-        ?int $numberOfRequestsPerSecond = null,
-        ?int $numberOfRequestsPerMinute = null,
-        ?int $numberOfRequestsPerHour = null,
+        array $config
     ): bool
     {
-        if($numberOfRequestsPerSecond !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerSecond, 'second');
+        if($config['numberOfRequestsPerSecond'] !== null){
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $config['numberOfRequestsPerSecond'], 'second');
             if($isRateLimited){
+                $this->dispatchEvent($method, $controller, $action, $config, 'second');
                 return true;
             }
         }
 
-        if($numberOfRequestsPerMinute !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerMinute, 'minute');
+        if($config['numberOfRequestsPerMinute'] !== null){
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $config['numberOfRequestsPerMinute'], 'minute');
             if($isRateLimited){
+                $this->dispatchEvent($method, $controller, $action, $config, 'minute');
                 return true;
             }
         }
 
-        if($numberOfRequestsPerHour !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $numberOfRequestsPerHour, 'hour');
+        if($config['numberOfRequestsPerHour'] !== null){
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $config['numberOfRequestsPerHour'], 'hour');
+
             if($isRateLimited){
+                $this->dispatchEvent($method, $controller, $action, $config, 'hour');
                 return true;
             }
         }
@@ -278,5 +269,18 @@ class CraftRateLimiter extends Plugin
 
         $response->send();
         Craft::$app->end();
+    }
+
+    private function dispatchEvent(string $requestMethod, string $controllerClass, string $actionId, array $config, string $triggeredInterval): void
+    {
+        $this->trigger(self::RATE_LIMIT_EXCEEDED, new RateLimitExceededEvent([
+            'requestMethod' => $requestMethod,
+            'controllerClass' => $controllerClass,
+            'actionId' => $actionId,
+            'triggeredInterval' => $triggeredInterval,
+            'numberOfRequestsPerSecond' => $config['numberOfRequestsPerSecond'],
+            'numberOfRequestsPerMinute' => $config['numberOfRequestsPerMinute'],
+            'numberOfRequestsPerHour' => $config['numberOfRequestsPerHour'],
+        ]));
     }
 }

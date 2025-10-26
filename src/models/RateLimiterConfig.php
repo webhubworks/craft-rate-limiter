@@ -10,6 +10,7 @@ class RateLimiterConfig
         'numberOfRequestsPerHour' => null,
         'requestMethods' => ['POST', 'PUT', 'PATCH', 'DELETE'],
         'controllerActions' => null,
+        'urlPaths' => [],
     ];
 
     public static function make(): self
@@ -41,15 +42,21 @@ class RateLimiterConfig
         return $this;
     }
 
-    public function addControllerAction(string $controllerClass, array $controllerActions): self
+    public function forControllerAction(string $controllerClass, array $controllerActions): self
     {
         $this->config['controllerActions'][$controllerClass] = $controllerActions;
         return $this;
     }
 
-    public function anyActionOfController(string $controllerClass): self
+    public function forAnyActionOfController(string $controllerClass): self
     {
         $this->config['controllerActions'][$controllerClass] = '*';
+        return $this;
+    }
+
+    public function forUrlPath(string $urlPath): self
+    {
+        $this->config['urlPaths'][] = $urlPath;
         return $this;
     }
 

@@ -108,6 +108,7 @@ class CraftRateLimiter extends Plugin
 
                     $matchesController = false;
                     $matchesUrlPath = false;
+                    $matchedUrlPattern = null;
 
                     // Check if controller/action matches (if configured)
                     if (!empty($config['controllerActions'])) {
@@ -125,12 +126,9 @@ class CraftRateLimiter extends Plugin
                     // Check if URL path matches (if configured)
                     if (!empty($config['urlPaths'])) {
                         foreach ($config['urlPaths'] as $configPath) {
-                            // Normalize both paths (remove leading slash for comparison)
-                            $normalizedConfigPath = ltrim($configPath, '/');
-                            $normalizedCurrentPath = ltrim($urlPath, '/');
-
-                            if ($normalizedConfigPath === $normalizedCurrentPath) {
+                            if ($this->matchesUrlPath($configPath, $urlPath)) {
                                 $matchesUrlPath = true;
+                                $matchedUrlPattern = $configPath;
                                 break;
                             }
                         }
@@ -146,6 +144,7 @@ class CraftRateLimiter extends Plugin
                         controller: $matchesController ? $controllerClass : null,
                         action: $matchesController ? $actionId : null,
                         urlPath: $matchesUrlPath ? $urlPath : null,
+                        urlPattern: $matchedUrlPattern,
                         config: $config
                     );
 
@@ -191,11 +190,12 @@ class CraftRateLimiter extends Plugin
         ?string $controller,
         ?string $action,
         ?string $urlPath,
+        ?string $urlPattern,
         array $config
     ): bool
     {
         if($config['numberOfRequestsPerSecond'] !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $config['numberOfRequestsPerSecond'], 'second');
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $urlPattern, $config['numberOfRequestsPerSecond'], 'second');
             if($isRateLimited){
                 $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'second');
                 return true;
@@ -203,7 +203,7 @@ class CraftRateLimiter extends Plugin
         }
 
         if($config['numberOfRequestsPerMinute'] !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $config['numberOfRequestsPerMinute'], 'minute');
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $urlPattern, $config['numberOfRequestsPerMinute'], 'minute');
             if($isRateLimited){
                 $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'minute');
                 return true;
@@ -211,7 +211,7 @@ class CraftRateLimiter extends Plugin
         }
 
         if($config['numberOfRequestsPerHour'] !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $config['numberOfRequestsPerHour'], 'hour');
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $urlPattern, $config['numberOfRequestsPerHour'], 'hour');
 
             if($isRateLimited){
                 $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'hour');
@@ -222,7 +222,7 @@ class CraftRateLimiter extends Plugin
         return false;
     }
 
-    private function checkRateLimitPerInterval(string $method, ?string $controller, ?string $action, ?string $urlPath, int $numberOfRequests, string $interval): bool
+    private function checkRateLimitPerInterval(string $method, ?string $controller, ?string $action, ?string $urlPath, ?string $urlPattern, int $numberOfRequests, string $interval): bool
     {
         /**
          * `Craft::$app->getRequest()->getUserIP()` should return the real IP address of the user
@@ -236,11 +236,13 @@ class CraftRateLimiter extends Plugin
         }
 
         // Build cache key based on whether this is URL path-based or controller/action-based
-        if ($urlPath !== null) {
-            // Normalize URL path for cache key (remove leading slash)
-            $normalizedUrlPath = ltrim($urlPath, '/');
-            $key = strtolower($method . '_urlpath_' . str_replace('/', '_', $normalizedUrlPath) . '_' . $ip . '_' . $interval);
-            $identifier = "URL path: $urlPath";
+        if ($urlPattern !== null) {
+            // Use the pattern (not the actual URL) for the cache key
+            // This ensures all requests matching the same pattern share the same rate limit
+            // e.g., api/products/{sku}.json matches both api/products/ABC.json and api/products/XYZ.json
+            $normalizedUrlPattern = ltrim($urlPattern, '/');
+            $key = strtolower($method . '_urlpath_' . str_replace(['/', '{', '}'], '_', $normalizedUrlPattern) . '_' . $ip . '_' . $interval);
+            $identifier = "URL path: $urlPath (pattern: $urlPattern)";
         } else {
             $key = strtolower($method . '_' . $controller . '_' . $action . '_' . $ip . '_' . $interval);
             $identifier = "controller: $controller, action: $action";
@@ -319,5 +321,35 @@ class CraftRateLimiter extends Plugin
             'numberOfRequestsPerMinute' => $config['numberOfRequestsPerMinute'],
             'numberOfRequestsPerHour' => $config['numberOfRequestsPerHour'],
         ]));
+    }
+
+    private function matchesUrlPath(mixed $configPath, string $urlPath): bool
+    {
+        // Normalize both paths (remove leading slash for comparison)
+        $normalizedConfigPath = ltrim($configPath, '/');
+        $normalizedCurrentPath = ltrim($urlPath, '/');
+
+        // Check for exact match first (optimization for simple paths)
+        if ($normalizedConfigPath === $normalizedCurrentPath) {
+            return true;
+        }
+
+        // Check if config path contains URL variables like {sku}
+        if (str_contains($normalizedConfigPath, '{')) {
+            // Convert URL pattern to regex
+            // Escape special regex characters except for {}
+            $pattern = preg_quote($normalizedConfigPath, '#');
+
+            // Replace escaped curly braces and variable names with regex pattern
+            // {variableName} becomes a pattern that matches any characters except /
+            $pattern = preg_replace('#\\\{[^}]+\\\}#', '[^/]+', $pattern);
+
+            // Match the full path
+            $pattern = '#^' . $pattern . '$#';
+
+            return (bool) preg_match($pattern, $normalizedCurrentPath);
+        }
+
+        return false;
     }
 }

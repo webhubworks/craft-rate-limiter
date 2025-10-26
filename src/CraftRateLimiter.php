@@ -85,14 +85,15 @@ class CraftRateLimiter extends Plugin
                 $controllerClass = get_class($event->action->controller); // e.g. 'craft\controllers\UsersController'
                 $actionId = $event->action->id; // e.g. 'login'
                 $requestMethod = $request->getMethod(); // e.g. 'POST'
+                $urlPath = $request->getPathInfo(); // e.g. 'api/users/login' (with or without leading slash)
 
                 /**
                  * We iterate over every config entry checking:
                  * - Does the request method match?
-                 * - Does the controller match?
-                 * - Does the controller action match?
+                 * - Does the controller match or the URL path match?
+                 * - Does the controller action match (if controller-based)?
                  *
-                 * If so, we check if the rate limit for this request method and controller action is exceeded.
+                 * If so, we check if the rate limit for this request method and controller action/URL path is exceeded.
                  */
                 foreach ($this->configs as $config) {
 
@@ -100,26 +101,51 @@ class CraftRateLimiter extends Plugin
                         $config = $config->build();
                     }
 
-                    if (
-                        ! isset($config['requestMethods'], $config['controllerActions']) ||
-                        ! in_array($requestMethod, $config['requestMethods']) ||
-                        ! in_array($controllerClass, array_keys($config['controllerActions']))
-                    ) {
+                    // First check if request method matches
+                    if (!isset($config['requestMethods']) || !in_array($requestMethod, $config['requestMethods'])) {
                         continue;
                     }
 
-                    $controllerActions = $config['controllerActions'][$controllerClass];
-                    if (
-                        $controllerActions !== '*'
-                        && (! is_array($controllerActions) || ! in_array($actionId, $controllerActions))
-                    ){
+                    $matchesController = false;
+                    $matchesUrlPath = false;
+
+                    // Check if controller/action matches (if configured)
+                    if (!empty($config['controllerActions'])) {
+                        if (in_array($controllerClass, array_keys($config['controllerActions']))) {
+                            $controllerActions = $config['controllerActions'][$controllerClass];
+                            if (
+                                $controllerActions === '*'
+                                || (is_array($controllerActions) && in_array($actionId, $controllerActions))
+                            ) {
+                                $matchesController = true;
+                            }
+                        }
+                    }
+
+                    // Check if URL path matches (if configured)
+                    if (!empty($config['urlPaths'])) {
+                        foreach ($config['urlPaths'] as $configPath) {
+                            // Normalize both paths (remove leading slash for comparison)
+                            $normalizedConfigPath = ltrim($configPath, '/');
+                            $normalizedCurrentPath = ltrim($urlPath, '/');
+
+                            if ($normalizedConfigPath === $normalizedCurrentPath) {
+                                $matchesUrlPath = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Skip if neither controller nor URL path matches
+                    if (!$matchesController && !$matchesUrlPath) {
                         continue;
                     }
 
                     $isRateLimited = $this->checkRateLimit(
                         method: $requestMethod,
-                        controller: $controllerClass,
-                        action: $actionId,
+                        controller: $matchesController ? $controllerClass : null,
+                        action: $matchesController ? $actionId : null,
+                        urlPath: $matchesUrlPath ? $urlPath : null,
                         config: $config
                     );
 
@@ -162,32 +188,33 @@ class CraftRateLimiter extends Plugin
 
     private function checkRateLimit(
         string $method,
-        string $controller,
-        string $action,
+        ?string $controller,
+        ?string $action,
+        ?string $urlPath,
         array $config
     ): bool
     {
         if($config['numberOfRequestsPerSecond'] !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $config['numberOfRequestsPerSecond'], 'second');
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $config['numberOfRequestsPerSecond'], 'second');
             if($isRateLimited){
-                $this->dispatchEvent($method, $controller, $action, $config, 'second');
+                $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'second');
                 return true;
             }
         }
 
         if($config['numberOfRequestsPerMinute'] !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $config['numberOfRequestsPerMinute'], 'minute');
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $config['numberOfRequestsPerMinute'], 'minute');
             if($isRateLimited){
-                $this->dispatchEvent($method, $controller, $action, $config, 'minute');
+                $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'minute');
                 return true;
             }
         }
 
         if($config['numberOfRequestsPerHour'] !== null){
-            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $config['numberOfRequestsPerHour'], 'hour');
+            $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $config['numberOfRequestsPerHour'], 'hour');
 
             if($isRateLimited){
-                $this->dispatchEvent($method, $controller, $action, $config, 'hour');
+                $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'hour');
                 return true;
             }
         }
@@ -195,7 +222,7 @@ class CraftRateLimiter extends Plugin
         return false;
     }
 
-    private function checkRateLimitPerInterval(string $method, string $controller, string $action, int $numberOfRequests, string $interval): bool
+    private function checkRateLimitPerInterval(string $method, ?string $controller, ?string $action, ?string $urlPath, int $numberOfRequests, string $interval): bool
     {
         /**
          * `Craft::$app->getRequest()->getUserIP()` should return the real IP address of the user
@@ -208,7 +235,16 @@ class CraftRateLimiter extends Plugin
             return false;
         }
 
-        $key = strtolower($method . '_' . $controller . '_' . $action . '_' . $ip . '_' . $interval);
+        // Build cache key based on whether this is URL path-based or controller/action-based
+        if ($urlPath !== null) {
+            // Normalize URL path for cache key (remove leading slash)
+            $normalizedUrlPath = ltrim($urlPath, '/');
+            $key = strtolower($method . '_urlpath_' . str_replace('/', '_', $normalizedUrlPath) . '_' . $ip . '_' . $interval);
+            $identifier = "URL path: $urlPath";
+        } else {
+            $key = strtolower($method . '_' . $controller . '_' . $action . '_' . $ip . '_' . $interval);
+            $identifier = "controller: $controller, action: $action";
+        }
 
         $data = $cache->get($key);
 
@@ -223,7 +259,7 @@ class CraftRateLimiter extends Plugin
                 /**
                  * Block the request
                  */
-                Craft::error("Rate limit of $numberOfRequests/$interval exceeded for IP: $ip, controller: $controller, action: $action, method: $method", 'craft-rate-limiter');
+                Craft::error("Rate limit of $numberOfRequests/$interval exceeded for IP: $ip, $identifier, method: $method", 'craft-rate-limiter');
 
                 return true;
             } else {
@@ -271,12 +307,13 @@ class CraftRateLimiter extends Plugin
         Craft::$app->end();
     }
 
-    private function dispatchEvent(string $requestMethod, string $controllerClass, string $actionId, array $config, string $triggeredInterval): void
+    private function dispatchEvent(string $requestMethod, ?string $controllerClass, ?string $actionId, ?string $urlPath, array $config, string $triggeredInterval): void
     {
         $this->trigger(self::RATE_LIMIT_EXCEEDED, new RateLimitExceededEvent([
             'requestMethod' => $requestMethod,
             'controllerClass' => $controllerClass,
             'actionId' => $actionId,
+            'urlPath' => $urlPath,
             'triggeredInterval' => $triggeredInterval,
             'numberOfRequestsPerSecond' => $config['numberOfRequestsPerSecond'],
             'numberOfRequestsPerMinute' => $config['numberOfRequestsPerMinute'],

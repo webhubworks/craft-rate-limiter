@@ -197,7 +197,7 @@ class CraftRateLimiter extends Plugin
         if($config['numberOfRequestsPerSecond'] !== null){
             $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $urlPattern, $config['numberOfRequestsPerSecond'], 'second');
             if($isRateLimited){
-                $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'second');
+                $this->dispatchEvent($method, $controller, $action, $urlPath, $urlPattern, $config, 'second');
                 return true;
             }
         }
@@ -205,7 +205,7 @@ class CraftRateLimiter extends Plugin
         if($config['numberOfRequestsPerMinute'] !== null){
             $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $urlPattern, $config['numberOfRequestsPerMinute'], 'minute');
             if($isRateLimited){
-                $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'minute');
+                $this->dispatchEvent($method, $controller, $action, $urlPath, $urlPattern, $config, 'minute');
                 return true;
             }
         }
@@ -214,7 +214,7 @@ class CraftRateLimiter extends Plugin
             $isRateLimited = $this->checkRateLimitPerInterval($method, $controller, $action, $urlPath, $urlPattern, $config['numberOfRequestsPerHour'], 'hour');
 
             if($isRateLimited){
-                $this->dispatchEvent($method, $controller, $action, $urlPath, $config, 'hour');
+                $this->dispatchEvent($method, $controller, $action, $urlPath, $urlPattern, $config, 'hour');
                 return true;
             }
         }
@@ -309,17 +309,19 @@ class CraftRateLimiter extends Plugin
         Craft::$app->end();
     }
 
-    private function dispatchEvent(string $requestMethod, ?string $controllerClass, ?string $actionId, ?string $urlPath, array $config, string $triggeredInterval): void
+    private function dispatchEvent(string $requestMethod, ?string $controllerClass, ?string $actionId, ?string $urlPath, ?string $urlPattern, array $config, string $triggeredInterval): void
     {
         $this->trigger(self::RATE_LIMIT_EXCEEDED, new RateLimitExceededEvent([
             'requestMethod' => $requestMethod,
             'controllerClass' => $controllerClass,
             'actionId' => $actionId,
+            'urlPattern' => $urlPattern,
             'urlPath' => $urlPath,
             'triggeredInterval' => $triggeredInterval,
             'numberOfRequestsPerSecond' => $config['numberOfRequestsPerSecond'],
             'numberOfRequestsPerMinute' => $config['numberOfRequestsPerMinute'],
             'numberOfRequestsPerHour' => $config['numberOfRequestsPerHour'],
+            'meta' => $config['meta'] ?? [],
         ]));
     }
 

@@ -11,6 +11,7 @@ class RateLimiterConfig
         'requestMethods' => ['POST', 'PUT', 'PATCH', 'DELETE'],
         'controllerActions' => null,
         'urlPaths' => [],
+        'meta' => [],
     ];
 
     public static function make(): self
@@ -57,6 +58,12 @@ class RateLimiterConfig
     public function forUrlPath(string $urlPath): self
     {
         $this->config['urlPaths'][] = $urlPath;
+        return $this;
+    }
+
+    public function addMeta(array $meta): self
+    {
+        $this->config['meta'] = array_merge($this->config['meta'], $meta);
         return $this;
     }
 

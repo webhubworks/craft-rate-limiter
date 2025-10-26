@@ -61,7 +61,7 @@ class RateLimiterConfig
         return $this;
     }
 
-    public function addMeta(array $meta): self
+    public function withMeta(array $meta): self
     {
         $this->config['meta'] = array_merge($this->config['meta'], $meta);
         return $this;
